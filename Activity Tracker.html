@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Activity Tracker</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f6f7f9;--card:#fff;--tx:#14171f;--mut:#667085;--ac:#4f46e5;--bd:#e4e7ec;--ok:#12b76a;--warn:#f79009}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1115;--card:#181b22;--tx:#eef0f4;--mut:#98a2b3;--ac:#818cf8;--bd:#2a2f3a}}
+:root[data-theme="dark"]{--bg:#0f1115;--card:#181b22;--tx:#eef0f4;--mut:#98a2b3;--ac:#818cf8;--bd:#2a2f3a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--card);border-bottom:1px solid var(--bd);display:flex;gap:8px;align-items:center;padding:10px 16px;flex-wrap:wrap}
+header b{margin-right:auto}
+button{font:inherit;cursor:pointer;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:8px;padding:7px 12px}
+button.on,button.pri{background:var(--ac);color:#fff;border-color:var(--ac)}
+.rec{color:var(--ok);font-size:13px}
+main{max-width:1000px;margin:0 auto;padding:16px}
+.sec{min-height:60vh;padding:40px 8px;border-bottom:1px dashed var(--bd)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.stat small{color:var(--mut);display:block}.stat b{font-size:22px}
+input{font:inherit;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);width:100%;margin:8px 0}
+.bar{height:10px;border-radius:5px;background:var(--ac);min-width:2px}
+.row{display:flex;align-items:center;gap:10px;margin:8px 0}.row span:first-child{width:90px}
+.log{max-height:320px;overflow:auto;font:13px/1.6 ui-monospace,Menlo,monospace}
+.log div{border-bottom:1px solid var(--bd);padding:2px 0}.log i{color:var(--mut);font-style:normal;margin-right:8px}
+.tag{background:var(--bd);border-radius:4px;padding:0 6px;margin-right:6px}
+canvas{width:100%;border:1px solid var(--bd);border-radius:8px;background:var(--bg)}
+textarea{width:100%;height:200px;font:12px ui-monospace,monospace;background:var(--bg);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:8px}
+#dash{display:none}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+h2,h3{margin:0 0 8px}
+</style></head><body>
+<header data-notrack>
+ <b>📊 Activity Tracker</b><span class="rec">● recording</span>
+ <button id="vApp" class="on">Demo app</button><button id="vDash">Dashboard</button>
+</header>
+
+<main id="app">
+ <section class="sec" data-track="Hero"><h2>Welcome to the demo app</h2><p>Click, move your mouse, scroll, switch browser tabs and come back. Then open the Dashboard.</p>
+  <button class="pri">Get started</button> <button>Learn more</button></section>
+ <section class="sec" data-track="Features"><h2>Features</h2>
+  <div class="cards"><div class="card"><h3>Fast</h3>Lightning quick.</div><div class="card"><h3>Secure</h3>Private by design.</div><div class="card"><h3>Simple</h3>Easy to use.</div></div></section>
+ <section class="sec" data-track="Pricing"><h2>Pricing</h2>
+  <div class="cards"><div class="card"><h3>Free</h3>$0<br><button>Choose</button></div><div class="card"><h3>Pro</h3>$9<br><button>Choose</button></div><div class="card"><h3>Team</h3>$29<br><button>Choose</button></div></div></section>
+ <section class="sec" data-track="Contact"><h2>Contact</h2><input placeholder="Your name"><input placeholder="Your message"><button class="pri">Send</button></section>
+</main>
+
+<main id="dash" data-notrack>
+ <div class="grid" id="stats"></div>
+ <div class="card" style="margin-top:12px"><h3>Time per section</h3><div id="dwell"></div></div>
+ <div class="card" style="margin-top:12px"><h3>Heatmap <small style="color:var(--mut)">(red = clicks, orange = mouse movement)</small></h3><canvas id="heat" width="800" height="600"></canvas></div>
+ <div class="card" style="margin-top:12px"><h3>Event log</h3><div class="chips" id="chips"></div><div class="log" id="log"></div></div>
+ <div class="card" style="margin-top:12px"><h3>Export / use in your own site</h3>
+  <button id="cpJson">Copy session JSON</button> <button id="cpCode">Copy tracker code</button> <button id="clr">Clear data</button>
+  <p style="color:var(--mut);margin:8px 0">Paste the tracker code into your site, then: <code>new UserTracker({endpoint:'/api/track'})</code>. Keystroke contents are never recorded.</p>
+  <textarea id="out" readonly></textarea></div>
+</main>
+
+<script>
+/* ===== UserTracker — copy this class into any web app ===== */
+class UserTracker{
+ constructor(o={}){
+  this.o=Object.assign({moveInterval:150,idleMs:5000,endpoint:null,onEvent:null,sectionSel:'[data-track]',ignoreSel:'[data-notrack]',maxEvents:5000},o);
+  this.reset();this._bind();
+ }
+ reset(){
+  this.t0=Date.now();this.events=[];this.dwell={};this.cur=null;this.ratios={};this.hiddenAt=null;
+  this.idle=false;this.lastAct=Date.now();this.lastScroll=-1;
+  this.stats={clicks:0,moves:0,keys:0,switches:0,idles:0,awayMs:0,activeMs:0,maxScroll:0};
+ }
+ log(type,data={}){
+  const e=Object.assign({t:Date.now()-this.t0,type},data);
+  if(this.events.length<this.o.maxEvents)this.events.push(e);
+  if(this.o.onEvent)this.o.onEvent(e);
+ }
+ sel(el){
+  if(!el||!el.tagName)return'';
+  let s=el.tagName.toLowerCase();if(el.id)s+='#'+el.id;
+  if(typeof el.className==='string'&&el.className.trim())s+='.'+el.className.trim().split(/\s+/)[0];
+  return s;
+ }
+ _ignored(e){return e.target&&e.target.closest&&e.target.closest(this.o.ignoreSel)}
+ _act(){
+  this.lastAct=Date.now();
+  if(this.idle){this.idle=false;this.log('idle_end');}
+ }
+ _dim(){const d=document.documentElement;return{w:d.scrollWidth,h:d.scrollHeight}}
+ _bind(){
+  let lastMove=0;
+  document.addEventListener('click',e=>{
+   if(this._ignored(e))return;this._act();this.stats.clicks++;
+   const t=e.target;
+   this.log('click',Object.assign({x:e.pageX,y:e.pageY,target:this.sel(t),text:(t.innerText||t.placeholder||'').trim().slice(0,30)},this._dim()));
+  },true);
+  document.addEventListener('mousemove',e=>{
+   if(this._ignored(e))return;this._act();
+   const n=Date.now();if(n-lastMove<this.o.moveInterval)return;lastMove=n;
+   this.stats.moves++;this.log('move',Object.assign({x:e.pageX,y:e.pageY},this._dim()));
+  },true);
+  document.addEventListener('keydown',e=>{if(this._ignored(e))return;this._act();this.stats.keys++;this.log('key',{target:this.sel(e.target)});},true);
+  window.addEventListener('scroll',()=>{
+   this._act();const d=document.documentElement;
+   const p=Math.min(100,Math.round((scrollY+innerHeight)/d.scrollHeight*100));
+   this.stats.maxScroll=Math.max(this.stats.maxScroll,p);
+   const b=Math.floor(p/10)*10;if(b!==this.lastScroll){this.lastScroll=b;this.log('scroll',{depth:p});}
+  },{passive:true});
+  document.addEventListener('visibilitychange',()=>{
+   if(document.hidden){this.hiddenAt=Date.now();this.stats.switches++;this.log('tab_hidden',{section:this.cur});}
+   else{const a=this.hiddenAt?Date.now()-this.hiddenAt:0;this.stats.awayMs+=a;this.hiddenAt=null;this._act();this.log('tab_visible',{awayMs:a});}
+  });
+  window.addEventListener('blur',()=>this.log('window_blur'));
+  window.addEventListener('focus',()=>this.log('window_focus'));
+  if('IntersectionObserver' in window){
+   const io=new IntersectionObserver(es=>{
+    es.forEach(en=>{this.ratios[en.target.dataset.track]=en.intersectionRatio;});
+    let best=null,max=0.3;
+    for(const k in this.ratios)if(this.ratios[k]>=max){max=this.ratios[k];best=k;}
+    if(best!==this.cur){this.cur=best;if(best){(this.dwell[best]=this.dwell[best]||{ms:0,visits:0}).visits++;this.log('section_enter',{section:best});}}
+   },{threshold:[0,.1,.2,.3,.4,.5,.6,.7,.8,.9,1]});
+   document.querySelectorAll(this.o.sectionSel).forEach(el=>io.observe(el));
+  }
+  this._tick=setInterval(()=>{
+   const n=Date.now();
+   if(!document.hidden&&!this.idle&&n-this.lastAct>this.o.idleMs){this.idle=true;this.stats.idles++;this.log('idle_start');}
+   if(!document.hidden&&!this.idle){
+    this.stats.activeMs+=250;
+    if(this.cur){(this.dwell[this.cur]=this.dwell[this.cur]||{ms:0,visits:0}).ms+=250;}
+   }
+  },250);
+  addEventListener('pagehide',()=>this.flush());
+ }
+ flush(){
+  if(!this.o.endpoint)return;
+  try{navigator.sendBeacon(this.o.endpoint,JSON.stringify(this.export()));}catch(e){}
+ }
+ export(){return{startedAt:new Date(this.t0).toISOString(),url:location.href,stats:this.stats,dwell:this.dwell,events:this.events.filter(e=>e.type!=='move')};}
+}
+/* ===== end of tracker ===== */
+
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=ms=>{const s=Math.round(ms/1000);return s<60?s+'s':Math.floor(s/60)+'m '+s%60+'s'};
+const tracker=new UserTracker();
+let filter='all',view='app';
+const groups={all:()=>true,click:e=>e.type==='click',tab:e=>/^(tab_|window_)/.test(e.type),scroll:e=>e.type==='scroll'||e.type==='section_enter',idle:e=>/^idle/.test(e.type),key:e=>e.type==='key'};
+$('#chips').innerHTML=Object.keys(groups).map(k=>`<button data-f="${k}" class="${k==='all'?'on':''}">${k}</button>`).join('');
+$('#chips').onclick=e=>{const f=e.target.dataset.f;if(!f)return;filter=f;document.querySelectorAll('#chips button').forEach(b=>b.classList.toggle('on',b.dataset.f===f));render();};
+function setView(v){view=v;$('#app').style.display=v==='app'?'':'none';$('#dash').style.display=v==='dash'?'block':'none';
+ $('#vApp').classList.toggle('on',v==='app');$('#vDash').classList.toggle('on',v==='dash');
+ tracker.log('view',{view:v});if(v==='dash')render();window.scrollTo(0,0);}
+$('#vApp').onclick=()=>setView('app');$('#vDash').onclick=()=>setView('dash');
+
+function render(){
+ if(view!=='dash')return;
+ const t=tracker,s=t.stats,now=Date.now();
+ const away=s.awayMs+(t.hiddenAt?now-t.hiddenAt:0);
+ const items=[['Session',fmt(now-t.t0)],['Active time',fmt(s.activeMs)],['Away (other tab)',fmt(away)],['Clicks',s.clicks],['Tab switches',s.switches],['Mouse samples',s.moves],['Keystrokes',s.keys],['Max scroll',s.maxScroll+'%'],['Idle periods',s.idles]];
+ $('#stats').innerHTML=items.map(([a,b])=>`<div class="card stat"><small>${a}</small><b>${b}</b></div>`).join('');
+ const d=Object.entries(t.dwell),max=Math.max(1,...d.map(x=>x[1].ms));
+ $('#dwell').innerHTML=d.length?d.sort((a,b)=>b[1].ms-a[1].ms).map(([k,v])=>`<div class="row"><span>${esc(k)}</span><div class="bar" style="width:${v.ms/max*60}%"></div><span style="width:auto">${fmt(v.ms)} · ${v.visits} visit${v.visits>1?'s':''}</span></div>`).join(''):'<span style="color:var(--mut)">Scroll through the demo app first.</span>';
+ const ev=t.events.filter(groups[filter]).filter(e=>e.type!=='move').slice(-80).reverse();
+ $('#log').innerHTML=ev.map(e=>{
+  let d='';if(e.type==='click')d=`${esc(e.target)} "${esc(e.text)}" @${e.x},${e.y}`;
+  else if(e.type==='scroll')d=e.depth+'%';else if(e.type==='section_enter')d=esc(e.section);
+  else if(e.type==='tab_visible')d='away '+fmt(e.awayMs);else if(e.type==='tab_hidden')d='left while in '+esc(e.section||'—');
+  else if(e.type==='view')d=e.view;else if(e.target)d=esc(e.target);
+  return `<div><i>${(e.t/1000).toFixed(1)}s</i><span class="tag">${e.type}</span>${d}</div>`}).join('')||'<span style="color:var(--mut)">No events yet.</span>';
+ heat();
+ $('#out').value=JSON.stringify(t.export(),null,1);
+}
+function heat(){
+ const c=$('#heat'),x=c.getContext('2d'),all=tracker.events.filter(e=>e.w);
+ const last=all[all.length-1],W=last?last.w:1000,H=last?last.h:2000;
+ c.width=800;c.height=Math.min(2400,Math.round(800*H/W));
+ x.clearRect(0,0,c.width,c.height);x.globalCompositeOperation='lighter';
+ all.forEach(e=>{
+  const px=e.x/e.w*c.width,py=e.y/e.h*c.height,cl=e.type==='click',r=cl?45:28;
+  const g=x.createRadialGradient(px,py,0,px,py,r);
+  g.addColorStop(0,cl?'rgba(255,0,0,.45)':'rgba(255,140,0,.12)');g.addColorStop(1,'rgba(0,0,0,0)');
+  x.fillStyle=g;x.fillRect(px-r,py-r,r*2,r*2);
+ });
+ x.globalCompositeOperation='source-over';
+}
+async function copy(txt,btn){try{await navigator.clipboard.writeText(txt);}catch(e){$('#out').value=txt;$('#out').select();}const o=btn.textContent;btn.textContent='Done ✓';setTimeout(()=>btn.textContent=o,1200);}
+$('#cpJson').onclick=e=>copy(JSON.stringify(tracker.export(),null,2),e.target);
+$('#cpCode').onclick=e=>copy(UserTracker.toString(),e.target);
+$('#clr').onclick=()=>{tracker.reset();render();};
+setInterval(render,500);
+</script></body></html>
